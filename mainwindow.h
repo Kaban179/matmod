@@ -7,7 +7,9 @@
 #include <QTimer>
 #include <QLabel>
 #include <QPushButton>
-
+#include <QSpinBox>
+#include <QVector>
+#include "qcustomplot.h" // Добавлено для графиков
 #include "worldobject.h"
 
 class MainWindow : public QMainWindow
@@ -22,16 +24,26 @@ private slots:
     void updateWorld();
     void startSimulation();
     void stopSimulation();
+    void onSpawnClicked();
 
 private:
     void setupUi();
     void spawnObjects();
-
+    void updateGraph();
     QWidget *centralWidget;
+
+    // Визуализация мира
     QGraphicsView *view;
     QGraphicsScene *scene;
 
+    // Элементы управления и вывода
     QLabel *statsLabel;
+    QCustomPlot *customPlot; // Виджет графика
+
+    // Элементы настройки
+    QSpinBox *sbHumanCount;
+    QSpinBox *sbZombieCount;
+    QPushButton *btnSpawn; // Кнопка "Применить настройки / Сброс"
 
     QPushButton *btnStart;
     QPushButton *btnStop;
@@ -39,8 +51,11 @@ private:
     QTimer *timer;
     QList<WorldObject*> objects;
 
-    const int HUMAN_COUNT = 50;
-    const int ZOMBIE_COUNT = 3;
+    // Данные для статистики
+    double simTime; // Текущее время симуляции
+    QVector<double> timeData;
+    QVector<double> humanData;
+    QVector<double> zombieData;
 };
 
 #endif // MAINWINDOW_H
