@@ -47,20 +47,25 @@ public:
 public:
     objType _type;
     objState _curState;
-    double _radius; // Радиус отрисовки
+    double _radius;
 
     // Новые параметры
     double _maxSpeed = 2.0;
     double _safetyRadius = 20.0;
-    double _searchRadius = 150.0; // Для зомби
-    double _obsRadius = 100.0;    // Для людей
-    double _biteRadius = 10.0;    // Дистанция укуса
+    double _searchRadius = 150.0;
+    double _obsRadius = 100.0;
+    double _biteRadius = 10.0;
 
-    // Вспомогательный метод для нормализации вектора
+    double _mass = 1.0;
+
+
+    static double windX, windY;        // Для обычного поля
+    static bool usePetriMode;          // Переключатель режима
+    static double mu, R_orbit, alpha;
+
     void applySteering(double targetX, double targetY, double weight, bool flee = false);
 };
 
-// --- Класс Человека ---
 class Human : public WorldObject
 {
     Q_OBJECT

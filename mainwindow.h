@@ -9,7 +9,7 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QVector>
-#include "qcustomplot.h" // Добавлено для графиков
+#include "qcustomplot.h"
 #include "worldobject.h"
 
 class MainWindow : public QMainWindow
@@ -19,6 +19,9 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+    void drawForceField();
+    void updatePetriVisuals();
+
 
 private slots:
     void updateWorld();
@@ -32,18 +35,17 @@ private:
     void updateGraph();
     QWidget *centralWidget;
 
-    // Визуализация мира
+
     QGraphicsView *view;
     QGraphicsScene *scene;
 
-    // Элементы управления и вывода
-    QLabel *statsLabel;
-    QCustomPlot *customPlot; // Виджет графика
 
-    // Элементы настройки
+    QLabel *statsLabel;
+    QCustomPlot *customPlot;
+
     QSpinBox *sbHumanCount;
     QSpinBox *sbZombieCount;
-    QPushButton *btnSpawn; // Кнопка "Применить настройки / Сброс"
+    QPushButton *btnSpawn;
 
     QPushButton *btnStart;
     QPushButton *btnStop;
@@ -51,14 +53,22 @@ private:
     QTimer *timer;
     QList<WorldObject*> objects;
 
-    // Данные для статистики
-    double simTime; // Текущее время симуляции
+    double simTime;
     QVector<double> timeData;
     QVector<double> humanData;
     QVector<double> zombieData;
     QSpinBox *sbSafetyRadius;
     QSpinBox *sbSearchRadius;
     QDoubleSpinBox *sbMaxSpeed;
+
+    QSlider *slAlpha;
+    QSlider *slMu;
+    QCheckBox *cbPetri;
+
+
+    QList<QGraphicsLineItem*> fieldLines;
+    QGraphicsEllipseItem *petriCircle = nullptr;
+    QGraphicsLineItem *gravityVector = nullptr;
 };
 
 #endif // MAINWINDOW_H

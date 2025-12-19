@@ -4,7 +4,7 @@
 #include <QGroupBox>
 #include <QRandomGenerator>
 #include <QLabel>
-#include <QDoubleSpinBox> // Добавлено для дробных чисел (скорость)
+#include <QDoubleSpinBox>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -19,7 +19,6 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
-    // Очистка списка объектов при закрытии
     qDeleteAll(objects);
     objects.clear();
 }
@@ -31,17 +30,14 @@ void MainWindow::setupUi() {
     QHBoxLayout *mainLayout = new QHBoxLayout(centralWidget);
     QVBoxLayout *controlLayout = new QVBoxLayout();
 
-    // 1. Настройка графической сцены
     scene = new QGraphicsScene(0, 0, 500, 500, this);
     view = new QGraphicsView(scene);
     view->setRenderHint(QPainter::Antialiasing);
     view->setFixedSize(520, 520);
 
-    // 2. Группа настроек популяции и ПОВЕДЕНИЯ
     QGroupBox *settingsGroup = new QGroupBox("Параметры симуляции");
     QVBoxLayout *settingsLayout = new QVBoxLayout(settingsGroup);
 
-    // Количество
     sbHumanCount = new QSpinBox();
     sbHumanCount->setRange(0, 500);
     sbHumanCount->setValue(50);
@@ -54,9 +50,6 @@ void MainWindow::setupUi() {
     settingsLayout->addWidget(new QLabel("Зомби (кол-во):"));
     settingsLayout->addWidget(sbZombieCount);
 
-    // --- НОВЫЕ ПАРАМЕТРЫ ПОВЕДЕНИЯ ---
-
-    // Радиус поиска/наблюдения (1.1 и 2.1 по заданию)
     QSpinBox *sbSearchRadius = new QSpinBox();
     sbSearchRadius->setRange(10, 300);
     sbSearchRadius->setValue(150);
@@ -64,7 +57,6 @@ void MainWindow::setupUi() {
     settingsLayout->addWidget(new QLabel("Радиус поиска/обнаружения:"));
     settingsLayout->addWidget(sbSearchRadius);
 
-    // Радиус безопасности (1.2 и 2.2 по заданию)
     QSpinBox *sbSafetyRadius = new QSpinBox();
     sbSafetyRadius->setRange(5, 100);
     sbSafetyRadius->setValue(25);
@@ -72,7 +64,6 @@ void MainWindow::setupUi() {
     settingsLayout->addWidget(new QLabel("Зона безопасности (уклонение):"));
     settingsLayout->addWidget(sbSafetyRadius);
 
-    // Максимальная скорость (v_max из задания)
     QDoubleSpinBox *sbMaxSpeed = new QDoubleSpinBox();
     sbMaxSpeed->setRange(0.5, 10.0);
     sbMaxSpeed->setValue(2.5);
@@ -85,7 +76,6 @@ void MainWindow::setupUi() {
     connect(btnSpawn, &QPushButton::clicked, this, &MainWindow::onSpawnClicked);
     settingsLayout->addWidget(btnSpawn);
 
-    // 3. Статистика и кнопки управления
     statsLabel = new QLabel("Статистика:\nЛюди: 0\nЗомби: 0");
     QFont font = statsLabel->font();
     font.setPointSize(11);
@@ -111,7 +101,7 @@ void MainWindow::setupUi() {
     customPlot->graph(1)->setPen(QPen(Qt::darkGreen));
     customPlot->graph(1)->setName("Зомби");
 
-    // Сборка интерфейса
+
     controlLayout->addWidget(settingsGroup);
     controlLayout->addWidget(statsLabel);
     QHBoxLayout *btnLayout = new QHBoxLayout();
@@ -123,6 +113,37 @@ void MainWindow::setupUi() {
 
     mainLayout->addWidget(view);
     mainLayout->addLayout(controlLayout);
+
+    QGroupBox *forceGroup = new QGroupBox("Внешние силы");
+    QVBoxLayout *forceLayout = new QVBoxLayout(forceGroup);
+
+    QCheckBox *cbPetri = new QCheckBox("Режим 'Чашка Петри'");
+    forceLayout->addWidget(cbPetri);
+
+    QLabel *lWind = new QLabel("Сила ветра (X):");
+    QDoubleSpinBox *sbWindX = new QDoubleSpinBox();
+    sbWindX->setRange(-2.0, 2.0);
+    forceLayout->addWidget(lWind);
+    forceLayout->addWidget(sbWindX);
+
+    connect(cbPetri, &QCheckBox::toggled, [](bool checked){
+        WorldObject::usePetriMode = checked;
+    });
+    connect(sbWindX, QOverload<double>::of(&QDoubleSpinBox::valueChanged), [](double val){
+        WorldObject::windX = val;
+    });
+
+    connect(cbPetri, &QCheckBox::toggled, [this](bool checked){
+        WorldObject::usePetriMode = checked;
+        updatePetriVisuals();
+    });
+
+    connect(slAlpha, &QSlider::valueChanged, [this](int val){
+        WorldObject::alpha = val * M_PI / 180.0;
+        updatePetriVisuals();
+    });
+
+    settingsLayout->addWidget(forceGroup);
 }
 
 void MainWindow::onSpawnClicked() {
@@ -131,13 +152,10 @@ void MainWindow::onSpawnClicked() {
 }
 
 void MainWindow::spawnObjects() {
-    timer->stop(); // Обязательно останавливаем таймер перед очисткой!
+    timer->stop();
 
-    // 1. Очищаем список, НЕ удаляя объекты вручную,
-    // так как scene->clear() сделает это сам за нас.
     objects.clear();
 
-    // 2. Очищаем сцену (это удалит объекты из памяти)
     scene->clear();
 
 
@@ -146,27 +164,22 @@ void MainWindow::spawnObjects() {
     humanData.clear();
     zombieData.clear();
 
-    // Получаем значения параметров из UI
     int humanCount = sbHumanCount->value();
     int zombieCount = sbZombieCount->value();
 
-    // Ищем наши новые поля по именам
     int searchRad = findChild<QSpinBox*>("sbSearchRadius")->value();
     int safetyRad = findChild<QSpinBox*>("sbSafetyRadius")->value();
     double maxSpeed = findChild<QDoubleSpinBox*>("sbMaxSpeed")->value();
 
-    // Создание Людей
     for(int i=0; i<humanCount; ++i) {
         Human *h = new Human();
         h->setPosition(QRandomGenerator::global()->bounded(500),
                        QRandomGenerator::global()->bounded(500));
 
-        // Передаем параметры логики (уклонение от зомби и своих)
-        h->_obsRadius = searchRad;    // Зона наблюдения
-        h->_safetyRadius = safetyRad; // Зона безопасности
-        h->_maxSpeed = maxSpeed;      // v_max
+        h->_obsRadius = searchRad;
+        h->_safetyRadius = safetyRad;
+        h->_maxSpeed = maxSpeed;
 
-        // Начальная случайная скорость
         h->_curState.vel = {(QRandomGenerator::global()->bounded(10)-5.0)/2.0,
                             (QRandomGenerator::global()->bounded(10)-5.0)/2.0};
 
@@ -174,16 +187,14 @@ void MainWindow::spawnObjects() {
         objects.append(h);
     }
 
-    // Создание Зомби
     for(int i=0; i<zombieCount; ++i) {
         Zombie *z = new Zombie();
         z->setPosition(QRandomGenerator::global()->bounded(500),
                        QRandomGenerator::global()->bounded(500));
 
-        // Передаем параметры логики (поиск целей и уклонение от своих)
-        z->_searchRadius = searchRad; // Зона поиска
-        z->_safetyRadius = safetyRad; // Зона безопасности
-        z->_maxSpeed = maxSpeed;      // v_max
+        z->_searchRadius = searchRad;
+        z->_safetyRadius = safetyRad;
+        z->_maxSpeed = maxSpeed;
 
         z->_curState.vel = {(QRandomGenerator::global()->bounded(10)-5.0)/2.0,
                             (QRandomGenerator::global()->bounded(10)-5.0)/2.0};
@@ -209,11 +220,10 @@ void MainWindow::stopSimulation() {
 void MainWindow::updateWorld() {
     int humans = 0;
     int zombies = 0;
-    double dt = 1.0; // Шаг времени
+    double dt = 1.0;
     simTime += dt;
 
     for(auto obj : objects) {
-        // Вызов обновленной логики (поиск целей/уклонение)
         obj->updateState(objects, dt); //
         obj->update();
 
@@ -221,7 +231,6 @@ void MainWindow::updateWorld() {
         else zombies++;
     }
 
-    // Сохранение данных для графика
     timeData.push_back(simTime);
     humanData.push_back(humans);
     zombieData.push_back(zombies);
@@ -231,7 +240,6 @@ void MainWindow::updateWorld() {
 
     scene->update();
 
-    // Опционально: обновление графика каждые 10 кадров для производительности
     if((int)simTime % 10 == 0) updateGraph();
 }
 
@@ -241,3 +249,26 @@ void MainWindow::updateGraph() {
     customPlot->rescaleAxes();
     customPlot->replot();
 }
+
+void MainWindow::updatePetriVisuals() {
+    if (!petriCircle) {
+        petriCircle = scene->addEllipse(0, 0, 500, 500, QPen(Qt::gray, 2, Qt::DashLine));
+        petriCircle->setZValue(-1); // Чтобы была под агентами
+    }
+    if (!gravityVector) {
+        gravityVector = scene->addLine(250, 250, 250, 250, QPen(Qt::red, 3));
+        gravityVector->setZValue(1); // Поверх всего
+    }
+
+    bool isVisible = WorldObject::usePetriMode;
+    petriCircle->setVisible(isVisible);
+    gravityVector->setVisible(isVisible);
+
+    if (isVisible) {
+        double len = 60.0;
+        double ex = 250 + std::cos(WorldObject::alpha) * len;
+        double ey = 250 + std::sin(WorldObject::alpha) * len;
+        gravityVector->setLine(250, 250, ex, ey);
+    }
+}
+
