@@ -48,6 +48,16 @@ public:
     objType _type;
     objState _curState;
     double _radius; // Радиус отрисовки
+
+    // Новые параметры
+    double _maxSpeed = 2.0;
+    double _safetyRadius = 20.0;
+    double _searchRadius = 150.0; // Для зомби
+    double _obsRadius = 100.0;    // Для людей
+    double _biteRadius = 10.0;    // Дистанция укуса
+
+    // Вспомогательный метод для нормализации вектора
+    void applySteering(double targetX, double targetY, double weight, bool flee = false);
 };
 
 // --- Класс Человека ---

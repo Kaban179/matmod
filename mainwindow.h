@@ -56,6 +56,9 @@ private:
     QVector<double> timeData;
     QVector<double> humanData;
     QVector<double> zombieData;
+    QSpinBox *sbSafetyRadius;
+    QSpinBox *sbSearchRadius;
+    QDoubleSpinBox *sbMaxSpeed;
 };
 
 #endif // MAINWINDOW_H

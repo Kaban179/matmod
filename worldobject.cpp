@@ -48,31 +48,86 @@ void Human::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWi
 }
 
 void Human::updateState(const QList<WorldObject *> &neighbors, double dt) {
-    double x = _curState.pos[0] + _curState.vel[0] * dt;
-    double y = _curState.pos[1] + _curState.vel[1] * dt;
+    // 1. ПРОВЕРКА: Если человек стал зомби, он должен атаковать
+    if (this->_type == ZOMBIE) {
+        WorldObject* closestVictim = nullptr;
+        double minDistSq = _searchRadius * _searchRadius;
 
-    if(x < 0 || x > 500) _curState.vel[0] *= -1;
-    if(y < 0 || y > 500) _curState.vel[1] *= -1;
+        for (WorldObject* obj : neighbors) {
+            if (obj == this || obj->getType() == ZOMBIE) continue;
 
-    if(x < 0) x = 0; if(x > 500) x = 500;
-    if(y < 0) y = 0; if(y > 500) y = 500;
+            double dx = obj->getState().pos[0] - _curState.pos[0];
+            double dy = obj->getState().pos[1] - _curState.pos[1];
+            double dSq = dx*dx + dy*dy; // Рассчитываем квадрат дистанции
 
-    setPosition(x, y);
-}
+            if (dSq < minDistSq) {
+                minDistSq = dSq;
+                closestVictim = obj;
+            }
+        }
 
-void Human::biteSlot() {
-    QObject* senderObj = sender();
-    if(!senderObj) return;
+        if (closestVictim) {
+            double dx = closestVictim->getState().pos[0] - _curState.pos[0];
+            double dy = closestVictim->getState().pos[1] - _curState.pos[1];
+            double actualDist = std::sqrt(minDistSq); // Теперь безопасно берем корень
 
-    WorldObject* wObj = dynamic_cast<WorldObject*>(senderObj);
+            // Вектор скорости к цели (v_max * направление)
+            _curState.vel[0] = (dx / actualDist) * _maxSpeed;
+            _curState.vel[1] = (dy / actualDist) * _maxSpeed;
 
-    if (wObj && wObj->getType() == ZOMBIE) {
-        if (_type == HUMAN) {
-            _type = ZOMBIE; // Теперь мы зомби
-            _curState._curStatus = AGGRESSIVE;
-            update();
+            // Логика укуса: если догнали — заражаем
+            if (actualDist < 10.0) { // 10.0 - дистанция укуса
+                Human* h = qobject_cast<Human*>(closestVictim);
+                if (h) h->biteSlot();
+            }
         }
     }
+    else {
+        // 2. ЛОГИКА ЧЕЛОВЕКА (Убегание)
+        double targetVx = 0;
+        double targetVy = 0;
+        bool fleeing = false;
+
+        for (WorldObject* obj : neighbors) {
+            if (obj == this) continue;
+
+            double dx = obj->getState().pos[0] - _curState.pos[0];
+            double dy = obj->getState().pos[1] - _curState.pos[1];
+            double dSq = dx*dx + dy*dy;
+
+            // Если зомби в радиусе наблюдения
+            if (obj->getType() == ZOMBIE && dSq < (_obsRadius * _obsRadius)) {
+                double dist = std::sqrt(dSq);
+                // Убегаем в противоположную сторону (-dx, -dy)
+                targetVx -= (dx / dist) * _maxSpeed;
+                targetVy -= (dy / dist) * _maxSpeed;
+                fleeing = true;
+            }
+        }
+
+        if (fleeing) {
+            _curState.vel[0] = targetVx;
+            _curState.vel[1] = targetVy;
+        }
+    }
+
+    // 3. ОБЩИЙ БЛОК: Движение и отскок от стен
+    double nextX = _curState.pos[0] + _curState.vel[0] * dt;
+    double nextY = _curState.pos[1] + _curState.vel[1] * dt;
+
+    if (nextX <= 0 || nextX >= 500) { _curState.vel[0] *= -1; nextX = qBound(0.0, nextX, 500.0); }
+    if (nextY <= 0 || nextY >= 500) { _curState.vel[1] *= -1; nextY = qBound(0.0, nextY, 500.0); }
+
+    setPosition(nextX, nextY);
+}
+
+
+
+
+void Human::biteSlot() {
+    _type = ZOMBIE; // Меняем тип
+    // Можно добавить смену цвета сразу здесь, если нужно
+    update(); // Перерисовываем
 }
 
 // --- Zombie ---
@@ -92,45 +147,98 @@ void Zombie::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QW
 }
 
 void Zombie::updateState(const QList<WorldObject *> &neighbors, double dt) {
-    double x = _curState.pos[0] + _curState.vel[0] * dt;
-    double y = _curState.pos[1] + _curState.vel[1] * dt;
-
-    if(x < 0 || x > 500) _curState.vel[0] *= -1;
-    if(y < 0 || y > 500) _curState.vel[1] *= -1;
-
-    if(x < 0) x = 0; if(x > 500) x = 500;
-    if(y < 0) y = 0; if(y > 500) y = 500;
-
-    setPosition(x, y);
-
+    // 1. Проверка кулдауна после укуса (чтобы не «прилипал» мгновенно)
     if (_isBusy) {
         _cooldownTimer++;
-        if (_cooldownTimer > 50) {
+        if (_cooldownTimer > 30) {
             _isBusy = false;
             _cooldownTimer = 0;
         }
-        return;
     }
 
+    double targetVx = _curState.vel[0];
+    double targetVy = _curState.vel[1];
+
+    WorldObject* closestVictim = nullptr;
+    double minDist = _searchRadius;
+
+    double searchRadSq = _searchRadius * _searchRadius;
+    double safetyRadSq = _safetyRadius * _safetyRadius;
+
     for (WorldObject* obj : neighbors) {
-        if (obj == this || obj->getType() == ZOMBIE) continue;
+        if (obj == this) continue;
+
         double dx = obj->getState().pos[0] - _curState.pos[0];
         double dy = obj->getState().pos[1] - _curState.pos[1];
+        double dSq = dx*dx + dy*dy;
+        if (dSq < searchRadSq) {
+            // И ТОЛЬКО ЕСЛИ объект попал в радиус, вычисляем корень для векторов
+            double dist = std::sqrt(dSq);
+
+
+            if (dist < 0.1) continue;
+
+
+        // 1.1 и 1.3: Поиск ближайшего человека
+        if (obj->getType() == HUMAN && dist < minDist) {
+            minDist = dist;
+            closestVictim = obj;
+        }
+
+        // 1.2 и 1.4: Уклонение от своих (чтобы не слипались в одну точку)
+        if (obj->getType() == ZOMBIE && dist < _safetyRadius) {
+            targetVx -= (dx / dist) * (_maxSpeed * 0.3);
+            targetVy -= (dy / dist) * (_maxSpeed * 0.3);
+
+        }
+        }
+    }
+
+    // Если нашли цель — движемся к ней
+    if (closestVictim && !_isBusy) {
+        double dx = closestVictim->getState().pos[0] - _curState.pos[0];
+        double dy = closestVictim->getState().pos[1] - _curState.pos[1];
         double dist = std::sqrt(dx*dx + dy*dy);
 
-        if (dist <= _biteRadius) {
-            Human* potentialVictim = dynamic_cast<Human*>(obj);
-            if (potentialVictim) {
-                connect(this, &Zombie::biteSignal, potentialVictim, &Human::biteSlot, Qt::UniqueConnection);
+        // Вектор скорости по заданию: v_max * (p2-p1)/|p2-p1|
+        targetVx = (dx / dist) * _maxSpeed;
+        targetVy = (dy / dist) * _maxSpeed;
 
-
-                emit biteSignal();
-
-                disconnect(this, &Zombie::biteSignal, potentialVictim, &Human::biteSlot);
-
-                _isBusy = true;
-                break;
+        // Логика атаки
+        if (dist < _biteRadius) {
+            Human* h = qobject_cast<Human*>(closestVictim);
+            if (h) {
+                h->biteSlot(); // Превращаем в зомби
+                _isBusy = true; // Зомби останавливается «пожевать»
+                targetVx = 0;
+                targetVy = 0;
             }
         }
     }
+
+    _curState.vel[0] = targetVx;
+    _curState.vel[1] = targetVy;
+
+    // --- ПРИМЕНЕНИЕ ДВИЖЕНИЯ И ОТСКОК ---
+    double newX = _curState.pos[0] + _curState.vel[0] * dt;
+    double newY = _curState.pos[1] + _curState.vel[1] * dt;
+
+    if (newX < 0 || newX > 500) {
+        _curState.vel[0] *= -1;
+        newX = (newX < 0) ? 0 : 500;
+    }
+    if (newY < 0 || newY > 500) {
+        _curState.vel[1] *= -1;
+        newY = (newY < 0) ? 0 : 500;
+    }
+
+
+
+
+    if (newX <= 0) { newX = 1; _curState.vel[0] *= -1; }
+    if (newX >= 500) { newX = 499; _curState.vel[0] *= -1; }
+    if (newY <= 0) { newY = 1; _curState.vel[1] *= -1; }
+    if (newY >= 500) { newY = 499; _curState.vel[1] *= -1; }
+
+    setPosition(newX, newY);
 }
